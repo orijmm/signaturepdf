@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css">
+</head>
+<style>
+    #pdf-viewer {
+        border: 2px solid #dddddd;
+    }
+
+    .border-green {
+        border: 2px solid #20c997 !important;
+    }
+</style>
+
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.6.347/build/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.3.4/jspdf.min.js"></script>
+
+    <div class="container-fluid">
+        <div class="row justify-content-center">
+            <div class="col-12">
+                <div>
+                    <button type="button" class="btn btn-info" id="prevPage">Previous Page</button>
+                    <span>Page <span id="page-num"></span> of <span id="page-count"></span></span>
+                    <button type="button" class="btn btn-info" id="nextPage">Page Next</button>
+                </div>
+            </div>
+            <div class="col-8">
+                <div id="pdf-viewer">
+                    <canvas id="pdfCanvas"></canvas>
+                </div>
+            </div>
+            <div class="col-4">
+                <ul class="list-group list-group-numbered">
+                    <li class="list-group-item">
+                        <div>Click on imagen <small>(border green selected)</small></div>
+                        <div class="custom-file">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Jangminho_signature.png"
+                                id="imageEle1" class="sign-img" onclick="selectImg(this)" alt="firma1" width="100px">
+                        </div>
+                    </li>
+                    <li class="list-group-item">
+                        <!-- Botón para agregar la imagen -->
+                        <button type="button" id="add-image" disabled class="btn btn-primary btn-lg">Add
+                            image</button>
+                    </li>
+                    <li class="list-group-item"><!-- Botón para descargar el PDF -->
+                        <button type="button" class="btn btn-primary btn-lg" id="download-pdf">Download PDF</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Variables globales
+        var pdfDoc = null,
+            pageNum = 1,
+            pageRendering = false,
+            pageNumPending = null,
+            canvas = document.getElementById('pdfCanvas'),
+            ctx = canvas.getContext('2d');
+
+        var myState = {
+            imgSign: [],
+            imgAdded: []
+        }
+
+        // Funciones de renderizado de página
+        function renderPage(num) {
+            pageRendering = true;
+
+            // Obtener la página
+            pdfDoc.getPage(num).then(function (page) {
+                var viewport = page.getViewport({ scale: 1.8 });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                canvas.style.width = '100%';
+                canvas.dataset.page = num;
+
+                let dimensions = page.getViewport(1).viewBox.map(n => n / 72 * 300);
+
+                // Renderizar la página en el canvas
+                var renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                page.render(renderContext).promise.then(function () {
+                    pageRendering = false;
+                    if (pageNumPending !== null) {
+                        // Hay una página pendiente de renderizar
+                        renderPage(pageNumPending);
+                        pageNumPending = null;
+                    }
+                });
+            });
+
+            // Actualizar los controles de navegación
+            document.getElementById('page-num').textContent = num;
+
+        }
+
+        //Evento en al seleccionar la imagen
+        function selectImg(img) {
+            const signImgs = document.querySelectorAll('.sign-img');
+            img.classList.toggle('border-green');//borde verde
+
+            // Crear un elemento de lienzo HTML (max 2 img)
+            if (myState.imgSign.length < 2 && img.classList.contains('border-green')) {
+                //agregar con operador spread al objeto myState
+                myState = { ...myState, imgSign: [...myState.imgSign, img.id] };
+            } else {
+                //quitar con operador spread del objeto myState
+                myState = { ...myState, imgSign: myState.imgSign.filter(element => element !== img.id) };
+            }
+
+            // Deshabilitar el botón si la matriz `imgSign` está vacía
+            document.getElementById('add-image').disabled = myState.imgSign.length === 0;
+        }
+
+        // Agregar la imagen al canvas al hacer clic en el botón
+        const addImageButton = document.getElementById('add-image');
+
+        addImageButton.addEventListener('click', () => {
+            // Crear un contenedor para la imagen
+            const imagensign = document.getElementById(myState.imgSign[0]);
+            //clonar imagen
+            const newimg = imagensign.cloneNode(true);
+            newimg.setAttribute("id", imagensign.id + "_Drag");
+            newimg.removeAttribute("onclick");
+            newimg.classList.toggle('border-green');
+            imagensign.removeAttribute("onclick");//quitar onclick a la img original
+
+            newimg.style.position = 'absolute';
+            newimg.style.left = '0px';
+            newimg.style.top = '0px';
+            document.getElementById('pdf-viewer').appendChild(newimg);
+            //quitar img de imgSign
+            myState = { ...myState, imgSign: myState.imgSign.filter(element => element !== myState.imgSign[0]) };
+            //agregar clon a imgAdded (imagenes agregadas)
+            myState = { ...myState, imgAdded: [...myState.imgAdded, newimg.id] };
+
+            interact(newimg)
+                // Habilitar la funcionalidad de arrastrar y soltar
+                .draggable({ modifiers: [interact.modifiers.restrictRect({ restriction: 'parent' })] })
+
+                // Manejar el evento "dragmove"
+                .on('dragmove', function (event) {
+                    // Actualizar la posición de la imagen según el movimiento del mouse
+                    const target = event.target;
+                    const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                    const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                    target.style.transform = `translate(${x}px, ${y}px)`;
+                    target.setAttribute('data-x', x);
+                    target.setAttribute('data-y', y);
+
+                    //pagina donde está siendo colocada
+                    var containercanvapage = document.querySelector('#pdf-viewer canvas');
+                    newimg.dataset.page = containercanvapage.dataset.page;
+                });
+        });
+
+        // Agregar el evento click al botón de descarga
+        const downloadButton = document.getElementById('download-pdf');
+        downloadButton.addEventListener('click', downloadAllPages);
+
+        function downloadAllPages() {
+
+            var totalPages = pdfDoc.numPages;
+            var doc = new jsPDF('p', 'pt', 'a4');
+
+            for (let i = 1; i <= totalPages; i++) {
+
+                pdfDoc.getPage(i).then(function (page) {
+
+                    var viewport = page.getViewport({ scale: 1.8 });
+                    var canvas = document.createElement('canvas');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    // Renderizar la página en el canvas
+                    var renderContext = {
+                        canvasContext: canvas.getContext('2d'),
+                        viewport: viewport
+                    };
+                    page.render(renderContext).promise.then(function () {
+                        // Agregar la imagen del canvas al PDF
+                        var imgData = canvas.toDataURL('image/jpeg');
+                        doc.addImage(imgData, 'JPEG', 0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height);
+                        myState.imgAdded.forEach(element => { //por cada imagen agregada
+                            //selecciona firm
+                            const imagepdf = document.getElementById(element);
+
+                            // Obtener la posición de la imagen
+                            const imagePosition = imagepdf.getBoundingClientRect();
+                            ////////
+                            // Obtener las coordenadas del centro del padre
+                            const padreRect = document.getElementById('pdf-viewer').getBoundingClientRect();
+                            // Calcular la distancia entre el borde izquierdo del padre y el borde izquierdo de la imagen
+                            const distanciaLeft = Math.abs(imagePosition.left - padreRect.left);
+                            const distanciaTop = Math.abs(imagePosition.top - padreRect.top);
+                            ///////
+
+                            if (imagepdf.dataset.page == i) {
+                                const scalaPDF = document.getElementById('pdf-viewer').clientWidth / doc.internal.pageSize.width;
+                                doc.addImage(imagepdf, 'PNG', distanciaLeft / scalaPDF, distanciaTop / scalaPDF, imagePosition.width / scalaPDF, imagePosition.height / scalaPDF);
+                            }
+                        });
+
+                        // Si es la última página, descargar el PDF
+                        if (i === totalPages) {
+                            //selecciona firm
+                            doc.save('pdf_with_all_pages.pdf');
+                        } else {
+                            // Agregar una nueva página al PDF
+                            doc.addPage();
+                        }
+                    });
+                });
+            }
+        }
+
+        // Funciones de navegación
+        function queueRenderPage(num) {
+            if (pageRendering) {
+                pageNumPending = num;
+            } else {
+                renderPage(num);
+            }
+        }
+
+        function onPrevPage() {
+            if (pageNum <= 1) {
+                return;
+            }
+            pageNum--;
+            queueRenderPage(pageNum);
+        }
+
+        function onNextPage() {
+            if (pageNum >= pdfDoc.numPages) {
+                return;
+            }
+            pageNum++;
+            queueRenderPage(pageNum);
+        }
+
+        // Cargar el archivo PDF y las páginas iniciales
+        pdfjsLib.getDocument('./pdfpaginas.pdf').promise.then(function (pdfDoc_) {
+            pdfDoc = pdfDoc_;
+            document.getElementById('page-count').textContent = pdfDoc.numPages;
+
+            // Renderizar la primera página
+            renderPage(pageNum);
+        });
+
+        // Agregar los listeners a los botones de navegación
+        document.getElementById('prevPage').addEventListener('click', onPrevPage);
+        document.getElementById('nextPage').addEventListener('click', onNextPage);
+
+    </script>
+
+</body>
+
+</html>
