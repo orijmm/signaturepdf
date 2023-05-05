@@ -69,11 +69,7 @@
                 canvas.style.width = '100%';
                 canvas.dataset.page = num;
 
-                let dimensions = page.getViewport(1).viewBox.map(n => n / 72 * 300);
-
-                console.log(dimensions,'1111111111');
-
-                // Renderizar la página en el canvas
+               // Renderizar la página en el canvas
                 var renderContext = {
                     canvasContext: ctx,
                     viewport: viewport
@@ -171,9 +167,6 @@
                         doc.addImage(imgData, 'JPEG', 0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height);
                         if (imagepdf.dataset.page == i) {
                             const scalaPDF = document.getElementById('pdf-viewer').clientWidth / doc.internal.pageSize.width;
-                            console.log(imagePosition.left, imagePosition.top);
-                            console.log(imagepdf.dataset.page == i, 'queso');
-
                             doc.addImage(imagepdf, 'PNG', imagePosition.left / scalaPDF, imagePosition.top / scalaPDF, imagePosition.width / scalaPDF, imagePosition.height / scalaPDF);
                         }
                         // Si es la última página, descargar el PDF
